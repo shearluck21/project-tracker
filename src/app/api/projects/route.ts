@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+type Status = 'todo' | 'in-progress' | 'done';
 import { prisma } from "@/server/db";
 
 export const dynamic = "force-dynamic";
