@@ -14,7 +14,6 @@ type ProjectPayload = {
   createdAt?: string; // ISO
 };
 
-// sanitize/normalize incoming payload (kept logic the same, just typed)
 function cleanProject(body: unknown): ProjectPayload {
   const b = body as Partial<ProjectPayload>;
   return {
@@ -30,7 +29,7 @@ function cleanProject(body: unknown): ProjectPayload {
   };
 }
 
-// GET all projects
+// GET
 export async function GET() {
   try {
     const items = await prisma.project.findMany({ orderBy: { createdAt: "desc" } });
@@ -41,7 +40,7 @@ export async function GET() {
   }
 }
 
-// POST: create
+// POST
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as ProjectPayload;
@@ -63,7 +62,7 @@ export async function POST(req: Request) {
   }
 }
 
-// PUT: update
+// PUT
 export async function PUT(req: Request) {
   try {
     const body = (await req.json()) as ProjectPayload;
@@ -85,7 +84,7 @@ export async function PUT(req: Request) {
   }
 }
 
-// DELETE: remove
+// DELETE
 export async function DELETE(req: Request) {
   try {
     const { id } = (await req.json()) as { id?: string };
