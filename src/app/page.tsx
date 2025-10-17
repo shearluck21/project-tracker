@@ -90,7 +90,7 @@ function ProjectDialog({
 
   // Add keyboard shortcuts for status selection when dialog is open
   useEffect(() => {
-    const onKey = (e: { key: string; target: EventTarget | null }) => {
+    const onKey = (e: KeyboardEvent) => {
       if (!open) return;
       if (["1", "2", "3"].includes(e.key)) {
         setStatus(STATUS_ORDER[parseInt(e.key) - 1]);
@@ -336,7 +336,7 @@ export default function ProjectTracker() {
   }, [projects, search, selectedTag, statusFilter]);
 
   useEffect(() => {
-    const onKey = (e: { key: string; target: EventTarget | null }) => {
+    const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const isTyping =
         target &&
@@ -503,7 +503,9 @@ export default function ProjectTracker() {
                 {filtered.map((p) => (
                   <div
                     key={p.id}
-                    ref={(el) => (rowRefs.current[p.id] = el)}
+                    ref={(el) => {
+                      rowRefs.current[p.id] = el;
+                    }}
                     className={cls(
                       "grid grid-cols-12 items-center px-4 py-3 transition",
                       selectedId === p.id ? "bg-gray-100" : "hover:bg-gray-50"
@@ -675,7 +677,9 @@ export default function ProjectTracker() {
                     .map((p) => (
                       <div
                         key={p.id}
-                        ref={(el) => (rowRefs.current[p.id] = el)}
+                        ref={(el) => {
+                          rowRefs.current[p.id] = el;
+                        }}
                         className={cls(
                           "rounded-2xl border bg-white p-3 shadow-sm transition",
                           selectedId === p.id ? "ring-2 ring-black" : "hover:shadow"
