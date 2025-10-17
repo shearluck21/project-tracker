@@ -1,77 +1,98 @@
 import { NextResponse } from "next/server";
-type Status = 'todo' | 'in-progress' | 'done';
 import { prisma } from "@/server/db";
 
 export const dynamic = "force-dynamic";
 
-// --- Helpers ---
-function cleanProject(body: any) {
+type DbStatus = "TO_BE_STARTED" | "IN_PROGRESS" | "DONE";
+
+type ProjectPayload = {
+  id?: string;
+  title: string;
+  status: DbStatus;
+  tags?: string[];
+  notes?: string | null;
+  createdAt?: string; // ISO
+};
+
+// sanitize/normalize incoming payload (kept logic the same, just typed)
+function cleanProject(body: unknown): ProjectPayload {
+  const b = body as Partial<ProjectPayload>;
   return {
-    id: body.id,
-    title: body.title,
+    id: b.id,
+    title: b.title ?? "",
     status:
-      body.status === "IN_PROGRESS" || body.status === "DONE"
-        ? body.status
+      b.status === "IN_PROGRESS" || b.status === "DONE"
+        ? b.status
         : "TO_BE_STARTED",
-    tags: Array.isArray(body.tags) ? body.tags : [],
-    notes: body.notes ?? null,
-    createdAt: body.createdAt ? new Date(body.createdAt) : undefined,
+    tags: Array.isArray(b.tags) ? b.tags : [],
+    notes: b.notes ?? null,
+    createdAt: b.createdAt,
   };
 }
-
-// --- Routes ---
 
 // GET all projects
 export async function GET() {
   try {
-    const items = await prisma.project.findMany({
-      orderBy: { createdAt: "desc" },
-    });
+    const items = await prisma.project.findMany({ orderBy: { createdAt: "desc" } });
     return NextResponse.json(items);
   } catch (err) {
     console.error("[GET /api/projects] error:", err);
-    // Return an empty array to keep the client stable; include an error flag
     return NextResponse.json([], { status: 200, headers: { "x-error": "true" } });
   }
 }
 
-// POST: create new project
+// POST: create
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const data = cleanProject(body);
-    const created = await prisma.project.create({ data });
+    const body = (await req.json()) as ProjectPayload;
+    const d = cleanProject(body);
+    const created = await prisma.project.create({
+      data: {
+        id: d.id,
+        title: d.title,
+        status: d.status,
+        tags: d.tags ?? [],
+        notes: d.notes ?? null,
+        createdAt: d.createdAt ? new Date(d.createdAt) : undefined,
+      },
+    });
     return NextResponse.json(created, { status: 201 });
-  } catch (err: any) {
+  } catch (err) {
     console.error("[POST /api/projects] error:", err);
     return NextResponse.json({ error: "Failed to create" }, { status: 500 });
   }
 }
 
-// PUT: update existing project
+// PUT: update
 export async function PUT(req: Request) {
   try {
-    const body = await req.json();
-    const data = cleanProject(body);
+    const body = (await req.json()) as ProjectPayload;
+    const d = cleanProject(body);
     const updated = await prisma.project.update({
-      where: { id: data.id },
-      data,
+      where: { id: d.id! },
+      data: {
+        title: d.title,
+        status: d.status,
+        tags: d.tags ?? [],
+        notes: d.notes ?? null,
+        createdAt: d.createdAt ? new Date(d.createdAt) : undefined,
+      },
     });
     return NextResponse.json(updated);
-  } catch (err: any) {
+  } catch (err) {
     console.error("[PUT /api/projects] error:", err);
     return NextResponse.json({ error: "Failed to update" }, { status: 500 });
   }
 }
 
-// DELETE: remove project
+// DELETE: remove
 export async function DELETE(req: Request) {
   try {
-    const { id } = await req.json();
+    const { id } = (await req.json()) as { id?: string };
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
     await prisma.project.delete({ where: { id } });
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
+  } catch (err) {
     console.error("[DELETE /api/projects] error:", err);
     return NextResponse.json({ error: "Failed to delete" }, { status: 500 });
   }

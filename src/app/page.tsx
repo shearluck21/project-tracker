@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Plus, Search, KanbanSquare, ListTree, Tag, X, Filter } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Toggle } from "@/components/ui/toggle";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
+import { Badge } from "../components/ui/badge";
+import { Toggle } from "../components/ui/toggle";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 
 type Status = "To Be Started" | "In Progress" | "Done";
 type Project = {
@@ -27,6 +27,17 @@ const uiToDb = (s: Status): DbStatus =>
   s === "To Be Started" ? "TO_BE_STARTED" : s === "In Progress" ? "IN_PROGRESS" : "DONE";
 const dbToUi = (s: DbStatus): Status =>
   s === "TO_BE_STARTED" ? "To Be Started" : s === "IN_PROGRESS" ? "In Progress" : "Done";
+
+// API response row from /api/projects
+type ApiProjectRow = {
+  id: string;
+  title: string;
+  status: DbStatus;
+  tags: string[];
+  notes: string | null;
+  createdAt?: string;
+  created_at?: string;
+};
 
 const STATUS_ORDER: Status[] = ["To Be Started", "In Progress", "Done"];
 const STATUS_SHORTCUTS: Record<string, Status> = {
@@ -79,7 +90,7 @@ function ProjectDialog({
 
   // Add keyboard shortcuts for status selection when dialog is open
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: { key: string; target: EventTarget | null }) => {
       if (!open) return;
       if (["1", "2", "3"].includes(e.key)) {
         setStatus(STATUS_ORDER[parseInt(e.key) - 1]);
@@ -230,12 +241,12 @@ export default function ProjectTracker() {
   useEffect(() => {
     (async () => {
       const res = await fetch("/api/projects", { cache: "no-store" });
-      const data = await res.json();
+      const data = (await res.json()) as ApiProjectRow[];
       // Map DB -> UI
-      const normalized: Project[] = data.map((row: any) => ({
+      const normalized: Project[] = data.map((row) => ({
         id: row.id,
         title: row.title,
-        status: dbToUi(row.status as DbStatus),
+        status: dbToUi(row.status),
         tags: row.tags ?? [],
         notes: row.notes ?? undefined,
         createdAt: row.createdAt ?? row.created_at ?? new Date().toISOString(),
@@ -245,18 +256,14 @@ export default function ProjectTracker() {
   }, []);
 
   // Helper to persist a single project to the API
-  async function persistProject(p: Project) {
-    const payload = {
-      ...p,
-      status: uiToDb(p.status),
-      createdAt: p.createdAt,
-    };
+  const persistProject = useCallback(async (p: Project) => {
+    const payload = { ...p, status: uiToDb(p.status), createdAt: p.createdAt };
     await fetch("/api/projects", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-  }
+  }, []);
 
   // API-backed upsert
   const upsert = async (proj: Project) => {
@@ -296,7 +303,7 @@ export default function ProjectTracker() {
   };
 
   // General update helper to merge partial edits and persist
-  const updateProject = async (id: string, patch: Partial<Project>) => {
+  const updateProject = useCallback(async (id: string, patch: Partial<Project>) => {
     let next: Project | null = null;
     setProjects((prev) =>
       prev.map((p) => {
@@ -306,7 +313,7 @@ export default function ProjectTracker() {
       })
     );
     if (next) await persistProject(next);
-  };
+  }, [persistProject]);
 
   const allTags = useMemo(() => {
     const s = new Set<string>();
@@ -329,7 +336,7 @@ export default function ProjectTracker() {
   }, [projects, search, selectedTag, statusFilter]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: { key: string; target: EventTarget | null }) => {
       const target = e.target as HTMLElement | null;
       const isTyping =
         target &&
@@ -396,7 +403,7 @@ export default function ProjectTracker() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, filtered]);
+  }, [selectedId, filtered, updateProject]);
 
   const openNew = () => {
     setEdit(undefined);
