@@ -1,18 +1,17 @@
+// src/app/api/project/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "@/server/db"
+import { prisma } from "@/server/db";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-
-export const dynamic = "force-dynamic";
-
 type DbStatus = "TO_BE_STARTED" | "IN_PROGRESS" | "DONE";
-
 type ProjectPayload = {
   id?: string;
   title: string;
@@ -37,112 +36,139 @@ function cleanProject(body: unknown): ProjectPayload {
   };
 }
 
-// GET
-// GET all projects
-export async function GET() {
+function getId(req: Request) {
+  return new URL(req.url).searchParams.get("id") ?? undefined;
+}
+
+/* ================ GET /api/project?id=... ================ */
+export async function GET(req: Request) {
+  const id = getId(req);
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  // Prisma first
   try {
-    const items = await prisma.project.findMany({ orderBy: { createdAt: "desc" } });
-    return NextResponse.json(items);
+    const item = await prisma.project.findUnique({ where: { id } });
+    if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(item);
   } catch (err) {
-    console.error("[GET /api/projects] error:", err);
-    return NextResponse.json([], { status: 200, headers: { "x-error": "true" } });
-  const { data, error } = await supabase
-    .from("projects")
-    .select("*")
-    .order("createdAt", { ascending: false });
+    console.error("[GET /api/project] Prisma error:", err);
+  }
 
-  if (error) {
-    console.error("GET /api/projects error:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 400 });
-}
-  return NextResponse.json(data ?? []);
-}
-
-// POST
-// POST (insert new project)
-export async function POST(req: Request) {
+  // Supabase fallback
   try {
-    const body = (await req.json()) as ProjectPayload;
-    const d = cleanProject(body);
+    const { data, error } = await supabase.from("projects").select("*").eq("id", id).single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(data);
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message ?? err) }, { status: 500 });
+  }
+}
+
+/* ================ POST /api/project ================ */
+export async function POST(req: Request) {
+  const payload = cleanProject(await req.json());
+
+  // Prisma first
+  try {
     const created = await prisma.project.create({
       data: {
-        id: d.id,
-        title: d.title,
-        status: d.status,
-        tags: d.tags ?? [],
-        notes: d.notes ?? null,
-        createdAt: d.createdAt ? new Date(d.createdAt) : undefined,
+        id: payload.id,
+        title: payload.title,
+        status: payload.status,
+        tags: payload.tags ?? [],
+        notes: payload.notes ?? null,
+        createdAt: payload.createdAt ? new Date(payload.createdAt) : undefined,
       },
     });
     return NextResponse.json(created, { status: 201 });
   } catch (err) {
-    console.error("[POST /api/projects] error:", err);
-    return NextResponse.json({ error: "Failed to create" }, { status: 500 });
-  const body = await req.json();
-  const { data, error } = await supabase.from("projects").insert([body]).select().single();
+    console.error("[POST /api/project] Prisma error:", err);
+  }
 
-  if (error) {
-    console.error("POST /api/projects error:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 400 });
-}
-  return NextResponse.json(data);
-}
-
-// PUT
-// PUT (update existing project)
-export async function PUT(req: Request) {
+  // Supabase fallback
   try {
-    const body = (await req.json()) as ProjectPayload;
-    const d = cleanProject(body);
+    const row = {
+      id: payload.id,
+      title: payload.title,
+      status: payload.status,
+      tags: payload.tags ?? [],
+      notes: payload.notes ?? null,
+      createdAt: payload.createdAt ?? new Date().toISOString(),
+    };
+    const { data, error } = await supabase.from("projects").insert([row]).select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json(data, { status: 201 });
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message ?? err) }, { status: 500 });
+  }
+}
+
+/* ================ PUT /api/project?id=... ================ */
+export async function PUT(req: Request) {
+  const id = getId(req);
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  const payload = cleanProject(await req.json());
+
+  // Prisma first
+  try {
     const updated = await prisma.project.update({
-      where: { id: d.id! },
+      where: { id },
       data: {
-        title: d.title,
-        status: d.status,
-        tags: d.tags ?? [],
-        notes: d.notes ?? null,
-        createdAt: d.createdAt ? new Date(d.createdAt) : undefined,
+        title: payload.title,
+        status: payload.status,
+        tags: payload.tags ?? [],
+        notes: payload.notes ?? null,
+        createdAt: payload.createdAt ? new Date(payload.createdAt) : undefined,
       },
     });
     return NextResponse.json(updated);
   } catch (err) {
-    console.error("[PUT /api/projects] error:", err);
-    return NextResponse.json({ error: "Failed to update" }, { status: 500 });
-  const body = await req.json();
-  const { id, ...rest } = body;
+    console.error("[PUT /api/project] Prisma error:", err);
+  }
 
-  const { data, error } = await supabase
-    .from("projects")
-    .update(rest)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error("PUT /api/projects error:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 400 });
-}
-  return NextResponse.json(data);
-}
-
-// DELETE
-// DELETE (remove project)
-export async function DELETE(req: Request) {
+  // Supabase fallback
   try {
-    const { id } = (await req.json()) as { id?: string };
-    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    const { data, error } = await supabase
+      .from("projects")
+      .update({
+        title: payload.title,
+        status: payload.status,
+        tags: payload.tags ?? [],
+        notes: payload.notes ?? null,
+        createdAt: payload.createdAt,
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json(data);
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message ?? err) }, { status: 500 });
+  }
+}
+
+/* ================ DELETE /api/project?id=... ================ */
+export async function DELETE(req: Request) {
+  const id = getId(req);
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  // Prisma first
+  try {
     await prisma.project.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("[DELETE /api/projects] error:", err);
-    return NextResponse.json({ error: "Failed to delete" }, { status: 500 });
-  const { id } = await req.json();
-  const { error } = await supabase.from("projects").delete().eq("id", id);
+    console.error("[DELETE /api/project] Prisma error:", err);
+  }
 
-  if (error) {
-    console.error("DELETE /api/projects error:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 400 });
-}
-}
-  return NextResponse.json({ success: true });
+  // Supabase fallback
+  try {
+    const { error } = await supabase.from("projects").delete().eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err?.message ?? err) }, { status: 500 });
+  }
 }
